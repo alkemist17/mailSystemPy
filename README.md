@@ -66,8 +66,10 @@ API REST para envío de correos electrónicos construida con FastAPI. Esta aplic
 
 4. **Acceder a la documentación interactiva**
 
-   - Swagger UI: http://localhost:8000/docs
-   - ReDoc: http://localhost:8000/redoc
+   - Swagger UI: http://localhost:8008/docs (solo accesible desde IPs autorizadas)
+   - ReDoc: http://localhost:8008/redoc (solo accesible desde IPs autorizadas)
+   
+   **Nota**: La documentación está protegida y solo es accesible desde las IPs configuradas en `ALLOWED_IPS`.
 
 ## 📚 Documentación de la API
 
@@ -495,6 +497,11 @@ Invoke-RestMethod ifconfig.me
 - **Públicos** (no requieren autenticación):
   - `GET /` - Información básica de la API
   - `GET /health` - Health check
+
+- **Protegidos por IP** (solo accesibles desde IPs autorizadas):
+  - `GET /docs` - Documentación Swagger UI
+  - `GET /redoc` - Documentación ReDoc
+  - `GET /openapi.json` - Esquema OpenAPI
 
 - **Protegidos** (requieren API Key e IP autorizada):
   - `POST /send-email` - Enviar correos

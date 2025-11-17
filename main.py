@@ -12,6 +12,7 @@ Versión: 1.0.0
 from fastapi import FastAPI, HTTPException, status, Depends, Security, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import List, Optional
 import smtplib
@@ -222,6 +223,89 @@ def verify_access(request: Request, api_key: str = Depends(verify_api_key)) -> s
     logger.info(f"Acceso autorizado desde IP: {client_ip}")
     return api_key
 
+
+def get_client_ip(request: Request) -> str:
+    """
+    Obtiene la IP real del cliente desde la solicitud.
+    Considera proxies y headers como X-Forwarded-For y X-Real-IP.
+    
+    Args:
+        request: Objeto Request de FastAPI
+        
+    Returns:
+        str: IP del cliente
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    
+    # Si hay un proxy, la IP real puede estar en headers
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        client_ip = real_ip.strip()
+    
+    return client_ip
+
+
+class DocsAccessMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware para restringir el acceso a la documentación (Swagger/ReDoc)
+    solo a las IPs permitidas.
+    
+    Este middleware intercepta las solicitudes a /docs y /redoc y verifica
+    que la IP del cliente esté en la whitelist antes de permitir el acceso.
+    """
+    
+    async def dispatch(self, request: Request, call_next):
+        # Rutas de documentación que queremos proteger
+        docs_paths = ["/docs", "/redoc", "/openapi.json"]
+        
+        # Verificar si la ruta es de documentación
+        if any(request.url.path.startswith(path) for path in docs_paths):
+            client_ip = get_client_ip(request)
+            
+            # Obtener IPs permitidas
+            allowed_ips = get_allowed_ips()
+            
+            # Si no hay IPs configuradas, permitir todas (modo desarrollo)
+            if not allowed_ips:
+                logger.warning("No hay IPs permitidas configuradas. Permitindo acceso a documentación desde todas las IPs.")
+                return await call_next(request)
+            
+            # Verificar si la IP está permitida
+            # Si 127.0.0.1 está permitido, también permitir IPs de red Docker/privada
+            ip_allowed = False
+            
+            if "127.0.0.1" in allowed_ips:
+                # Permitir localhost y redes Docker/privadas
+                if (client_ip in ['127.0.0.1', '::1', 'localhost'] or
+                    client_ip.startswith("172.") or
+                    client_ip.startswith("192.168.") or
+                    client_ip.startswith("10.")):
+                    ip_allowed = True
+                    logger.info(f"Acceso a documentación desde red Docker/privada ({client_ip}) permitido porque localhost está en whitelist")
+            
+            # Si no se permitió por la regla anterior, verificar normalmente
+            if not ip_allowed:
+                ip_allowed = verify_ip_address(client_ip)
+            
+            if not ip_allowed:
+                logger.warning(f"Intento de acceso a documentación desde IP no permitida: {client_ip}")
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={
+                        "detail": f"Acceso denegado. Tu IP ({client_ip}) no está autorizada para acceder a la documentación."
+                    }
+                )
+            
+            logger.info(f"Acceso a documentación autorizado desde IP: {client_ip}")
+        
+        # Continuar con la solicitud
+        return await call_next(request)
+
+
 # Crear instancia de FastAPI
 # FastAPI es un framework web moderno y rápido para construir APIs
 # con Python basado en estándares web como OpenAPI y JSON Schema
@@ -236,12 +320,16 @@ app = FastAPI(
     * Soporte para múltiples destinatarios
     * Soporte para archivos adjuntos
     * Validación de datos de entrada
-    * Documentación automática con Swagger/OpenAPI
+    * Documentación automática con Swagger/OpenAPI (acceso restringido por IP)
     """,
     version="1.0.0",
     docs_url="/docs",  # Ruta para la documentación interactiva (Swagger UI)
     redoc_url="/redoc"  # Ruta para la documentación alternativa (ReDoc)
 )
+
+# Agregar middleware para restringir acceso a la documentación
+# Este middleware debe agregarse después de crear la app pero antes de definir los endpoints
+app.add_middleware(DocsAccessMiddleware)
 
 
 # ============================================================================
