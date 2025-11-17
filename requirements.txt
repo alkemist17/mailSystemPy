@@ -1,0 +1,11 @@
+# FastAPI y servidor ASGI
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Validación de datos y tipos
+pydantic[email]==2.5.0
+email-validator==2.1.0
+
+# Variables de entorno
+python-dotenv==1.0.0
+

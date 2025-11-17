@@ -1,0 +1,55 @@
+# docker-compose.yml
+# Este archivo define y orquesta servicios Docker
+# Permite ejecutar múltiples contenedores y configurarlos fácilmente
+
+version: '3.8'
+
+services:
+  # Servicio principal de la API
+  mail-api:
+    # Construir la imagen desde el Dockerfile en el directorio actual
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # Nombre del contenedor (opcional, pero útil para identificarlo)
+    container_name: mailsystem-api
+
+    # Puerto: mapea el puerto 8000 del contenedor al puerto 8000 del host
+    # Formato: "puerto_host:puerto_contenedor"
+    ports:
+      - "8008:8000"
+
+    # Variables de entorno
+    # Estas se cargan desde el archivo .env en el directorio actual
+    env_file:
+      - .env
+
+    # Volúmenes (opcional, útil para desarrollo)
+    # Permite que los cambios en el código se reflejen sin reconstruir la imagen
+    # Descomenta las siguientes líneas si quieres desarrollo con hot-reload:
+    # volumes:
+    #   - ./main.py:/app/main.py
+    #   - ./requirements.txt:/app/requirements.txt
+
+    # Reiniciar automáticamente si el contenedor se detiene
+    restart: unless-stopped
+
+    # Healthcheck: verifica que la API esté funcionando
+    # Docker puede usar esto para saber si el contenedor está saludable
+    # Usamos python en lugar de curl ya que curl no está instalado en la imagen slim
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # Red (opcional, crea una red aislada para los servicios)
+    networks:
+      - mail-network
+
+# Definir redes personalizadas
+networks:
+  mail-network:
+    driver: bridge
